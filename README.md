@@ -1,50 +1,119 @@
 # Cancer Cell Line Drug Response Predictor
 
-Predicts drug sensitivity (LN_IC50) for cancer cell lines using gene expression data from DepMap and GDSC2.
+> ML-powered web app to predict cancer cell line drug sensitivity using GDSC and DepMap data.
 
-## What it does
-Given a cancer cell line, the app predicts how sensitive it is to a drug — using only gene expression (RNA-seq TPM) as input. Lower LN_IC50 = more sensitive = drug is effective at lower concentration.
+🔗 **Live Demo:** [huggingface.co/spaces/ansh1kac0re/cancer-drug-response](https://huggingface.co/spaces/ansh1kac0re/cancer-drug-response)
+
+---
+
+## What This Does
+
+Given a tumour type, drug, and cell line — the app predicts the **LN_IC50** (log-transformed drug concentration needed to inhibit 50% of cell growth).
+
+User flow: `Select Tumour Type → Select Drug → Select Cell Line → View Prediction`
+
+Outputs:
+- Predicted LN_IC50
+- Actual LN_IC50 (from GDSC data, where available)
+- Model R² and RMSE
+- Top gene importance features driving the prediction
+
+---
 
 ## Data Sources
-- **GDSC2** (Genomics of Drug Sensitivity in Cancer): 242,036 drug response measurements, 286 drugs, 969 cell lines
-- **DepMap 26Q1**: Gene expression (19,216 genes, 1,775 cell lines), somatic mutations, cell line metadata
-- **Overlap**: 824 cell lines with both expression and drug response data
 
-## Method
-1. Built master feature table: 156,307 rows × 39,368 columns (cell line × drug combinations with expression features)
-2. Per drug: selected top 1,000 most variable genes as features
-3. Trained XGBoost regressor (200 estimators, max_depth=4, lr=0.05)
-4. Evaluated on 20% held-out test set
+- **GDSC2** (Genomics of Drug Sensitivity in Cancer) — drug response (LN_IC50 values)
+- **DepMap** — cancer cell line gene expression profiles
 
-## Results
-Trained models for 286 drugs. Top 10 most predictable:
+---
 
-| Drug | R² | RMSE | n |
-|------|----|------|---|
-| Acetalax | 0.731 | 1.037 | 956 |
-| CHIR-99021 | 0.666 | 0.977 | 117 |
-| Irinotecan | 0.613 | 1.325 | 614 |
-| AZD5991 | 0.607 | 1.867 | 477 |
-| Olaparib | 0.597 | 0.792 | 615 |
-| Nutlin-3a | 0.594 | 1.152 | 616 |
-| Camptothecin | 0.593 | 1.160 | 616 |
-| Rucaparib | 0.564 | 0.679 | 601 |
-| Tozasertib | 0.555 | 1.475 | 152 |
-| Vorinostat | 0.552 | 0.808 | 610 |
+## Model
 
-Erlotinib (EGFR inhibitor, used as initial test case): R²=0.269, RMSE=1.182. EGFR gene expression was the top predictive feature — biologically consistent.
+- Algorithm: **XGBoost Regressor** (outperforms Random Forest baseline)
+- Features: Gene expression values per cell line
+- Target: LN_IC50 per drug
+- Trained: one model per drug (286 drugs total in training)
+- Deployed: 5 curated drugs in v1 demo (lazy-loaded on drug selection)
 
-## Stack
-Python, pandas, scikit-learn, XGBoost, Streamlit, joblib, pyarrow
+### V1 Demo Drugs — Model Performance
+
+| Drug | R² | RMSE |
+|---|---|---|
+| Erlotinib | — | — |
+| Olaparib | — | — |
+| Irinotecan | — | — |
+| 5-Fluorouracil | 0.444 | 1.360 |
+| Palbociclib | — | — |
+
+> **Note on model quality:** R² values vary by drug. The deployed demo is a proof-of-concept. Models with low R² should be interpreted carefully — the predicted LN_IC50 reflects general trends, not clinical dosing.
+
+---
+
+## Why Only 5 Drugs in the Demo?
+
+All 286 models were trained. The v1 app deploys 5 curated drugs to keep memory usage within Hugging Face free-tier limits (lazy-loading one model at a time). Expanding to more drugs is planned for v2.
+
+---
 
 ## Repo Structure
-## Run locally
+
+```
+cancer-drug-predictor/
+├── data/               # Data loading scripts, GDSC2 exploration
+├── models/             # Trained XGBoost models (.pkl) + deploy-safe files (.json, .npy)
+├── notebooks/          # Exploratory analysis, model comparison (Day 1–9)
+├── app.py              # Streamlit app (deployed on HF Spaces)
+├── data_prep.py        # Data cleaning and feature engineering
+├── train_models.py     # XGBoost training loop across 286 drugs
+└── requirements.txt    # Python dependencies
+```
+
+---
+
+## Run Locally
+
 ```bash
+git clone https://github.com/anshikatyagi2904-biocode/cancer-drug-predictor
+cd cancer-drug-predictor
 pip install -r requirements.txt
 streamlit run app.py
 ```
 
-## Note on data files
-`data/` files are not on GitHub due to size. Download from:
-- GDSC2: https://www.cancerrxgene.org/downloads/bulk_download
-- DepMap 26Q1: https://depmap.org/portal/download/
+> The app loads model files from Hugging Face dataset on startup. Internet connection required.
+
+---
+
+## Key Notebooks
+
+| Notebook | What it shows |
+|---|---|
+| Day 6 | XGBoost vs RF baseline — XGBoost wins on R² |
+| Day 8 | Full training loop: 286 drugs, results saved |
+| Day 9 | README methodology writeup |
+
+---
+
+## Limitations
+
+- Models trained on cancer cell lines (in vitro) — not clinical data
+- Gene expression features only; no mutation, CNV, or methylation data
+- Some drugs have poor model fit (low R²) — prediction confidence varies
+- V1 limited to 5 drugs
+
+---
+
+## Author
+
+**Anshika** — aspiring bioinformatician  
+Built as a self-directed 10-day ML project  
+GitHub: [@anshikatyagi2904-biocode](https://github.com/anshikatyagi2904-biocode)
+
+---
+
+## What's Next (V2 Roadmap)
+
+- [ ] Expand to 20+ drugs
+- [ ] Add predicted vs actual scatter plot
+- [ ] Include mutation features
+- [ ] Add model confidence intervals
+
