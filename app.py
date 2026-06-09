@@ -14,20 +14,22 @@ HF_REPO = "ansh1kac0re/cancer-drug-predictor-data"
 
 @st.cache_resource
 def load_model():
-    os.makedirs("models", exist_ok=True)
-    model = joblib.load(hf_hub_download(repo_id=HF_REPO, filename="models/xgb_erlotinib.pkl", repo_type="dataset"))
-    features = joblib.load(hf_hub_download(repo_id=HF_REPO, filename="models/top_features_erlotinib.pkl", repo_type="dataset"))
+    from xgboost import XGBRegressor
+    model_path = hf_hub_download(repo_id=HF_REPO, filename="models/xgb_erlotinib.json", repo_type="dataset")
+    features_path = hf_hub_download(repo_id=HF_REPO, filename="models/top_features_erlotinib.npy", repo_type="dataset")
+    model = XGBRegressor()
+    model.load_model(model_path)
+    features = np.load(features_path, allow_pickle=True)
     return model, features
 
 @st.cache_data
-def load_data():
-    features = joblib.load(hf_hub_download(repo_id=HF_REPO, filename="models/top_features_erlotinib.pkl", repo_type="dataset"))
-    cols = ['ModelID', 'CELL_LINE_NAME', 'DRUG_NAME', 'LN_IC50', 'TCGA_DESC', 'PATHWAY_NAME'] + list(features)
+def load_data(_features):
+    cols = ['ModelID', 'CELL_LINE_NAME', 'DRUG_NAME', 'LN_IC50', 'TCGA_DESC', 'PATHWAY_NAME'] + list(_features)
     df = pd.read_parquet("hf://datasets/ansh1kac0re/cancer-drug-predictor-data/master_features_slim.parquet", columns=cols)
     return df.drop(columns=[c for c in df.columns if 'Unnamed' in c])
 
 model, top_features = load_model()
-df = load_data()
+df = load_data(top_features)
 
 # — Sidebar ————————————————————————————————
 st.sidebar.header("Select Input")
