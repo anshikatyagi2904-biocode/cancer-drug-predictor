@@ -1,4 +1,7 @@
 import streamlit as st
+import os
+if "HF_TOKEN" in st.secrets:
+    os.environ["HF_TOKEN"] = st.secrets["HF_TOKEN"]
 import pandas as pd
 import numpy as np
 import joblib
