@@ -8,16 +8,22 @@
 
 ## What This Does
 
-Given a tumour type, drug, and cell line — the app predicts the **LN_IC50** (log-transformed drug concentration needed to inhibit 50% of cell growth).
+Not all cancers respond to the same drug — even within the same cancer type, two patients can have completely different outcomes. This happens because each tumour has a unique pattern of gene activity that determines how it behaves and what it is vulnerable to.
+
+This app uses that idea. Given a **cancer type**, a **drug**, and a **cell line** (a lab-grown cancer cell sample), it predicts how sensitive that cell is to the drug — using the cell's gene expression profile as input to a machine learning model.
+
+The prediction is expressed as **LN_IC50**: the log of the drug concentration needed to kill 50% of cells. A lower value means the drug works at a smaller dose — the cancer is more sensitive. A higher value means the drug barely works — the cancer is resistant.
+
+The model was trained on data from **GDSC2** (Genomics of Drug Sensitivity in Cancer), one of the largest publicly available datasets of cancer drug response, where hundreds of cancer cell lines were systematically tested against hundreds of drugs in the lab.
+
+Beyond the prediction number, the app shows:
+- How the prediction compares to the actual measured value
+- How trustworthy the model is for that specific drug
+- Which genes drove the prediction — and what those genes do biologically
+
+This is not a clinical tool. It is a research-oriented proof-of-concept showing that gene expression patterns can predict drug sensitivity with meaningful accuracy — and that the driving genes often point to real, interpretable biology.
 
 User flow: `Select Tumour Type → Select Drug → Select Cell Line → View Prediction`
-
-Outputs:
-- Predicted LN_IC50
-- Actual LN_IC50 (from GDSC data, where available)
-- Model R² and RMSE with confidence label (Good / Moderate / Weak)
-- Predicted vs Actual scatter plot across all cell lines for that drug
-- Top 20 gene importances with biological role annotations
 
 ---
 
@@ -133,10 +139,3 @@ GitHub: [@anshikatyagi2904-biocode](https://github.com/anshikatyagi2904-biocode)
 - [ ] Expand to 20+ drugs
 - [ ] Include mutation & CNV features
 - [ ] Add prediction confidence intervals
-
-
-
-
-
-
-
