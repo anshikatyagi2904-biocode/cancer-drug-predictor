@@ -15,8 +15,9 @@ User flow: `Select Tumour Type → Select Drug → Select Cell Line → View Pre
 Outputs:
 - Predicted LN_IC50
 - Actual LN_IC50 (from GDSC data, where available)
-- Model R² and RMSE
-- Top gene importance features driving the prediction
+- Model R² and RMSE with confidence label (Good / Moderate / Weak)
+- Predicted vs Actual scatter plot across all cell lines for that drug
+- Top 20 gene importances with biological role annotations
 
 ---
 
@@ -29,7 +30,7 @@ Outputs:
 
 ## Model
 
-- Algorithm: **XGBoost Regressor** (outperforms Random Forest baseline)
+- Algorithm: **XGBoost Regressor** (outperforms Random Forest baseline — see Day 6 notebook)
 - Features: Gene expression values per cell line
 - Target: LN_IC50 per drug
 - Trained: one model per drug (286 drugs total in training)
@@ -37,15 +38,28 @@ Outputs:
 
 ### V1 Demo Drugs — Model Performance
 
-| Drug | R² | RMSE |
-|---|---|---|
-| Erlotinib | — | — |
-| Olaparib | — | — |
-| Irinotecan | — | — |
-| 5-Fluorouracil | 0.444 | 1.360 |
-| Palbociclib | — | — |
+| Drug | R² | RMSE | Confidence |
+|---|---|---|---|
+| Irinotecan | 0.613 | 1.325 | ✅ Good |
+| Olaparib | 0.597 | 0.792 | ✅ Good |
+| Palbociclib | 0.476 | 1.203 | ⚠️ Moderate |
+| 5-Fluorouracil | 0.444 | 1.360 | ⚠️ Moderate |
+| Erlotinib | 0.231 | 1.213 | ❌ Weak |
 
-> **Note on model quality:** R² values vary by drug. The deployed demo is a proof-of-concept. Models with low R² should be interpreted carefully — the predicted LN_IC50 reflects general trends, not clinical dosing.
+> **Note on model quality:** R² values vary by drug. Models with low R² (e.g. Erlotinib) reflect genuine biological complexity — gene expression alone may not fully capture this drug's mechanism. Predictions should be interpreted as indicative trends, not clinical guidance.
+
+---
+
+## App Features
+
+### Predicted vs Actual Scatter Plot
+All cell lines for the selected drug plotted as predicted vs actual LN_IC50. Selected cell line highlighted in red. Includes percentile context — e.g. "this cell line is at the 34th percentile, lower than most (more sensitive)."
+
+### Model Confidence Indicator
+Automatically labels each drug's model as Good / Moderate / Weak based on R², with a plain-English explanation of what that means scientifically.
+
+### Biological Role Annotations
+Top 20 gene importances include a "Biological Role" column — each gene mapped to its pathway and cancer relevance (e.g. EPHA2 → "Ephrin receptor — overexpressed in many cancers; promotes invasion", SLFN11 → "predicts sensitivity to DNA-damaging drugs").
 
 ---
 
@@ -97,7 +111,7 @@ streamlit run app.py
 
 - Models trained on cancer cell lines (in vitro) — not clinical data
 - Gene expression features only; no mutation, CNV, or methylation data
-- Some drugs have poor model fit (low R²) — prediction confidence varies
+- R² varies significantly by drug — Erlotinib model is weak, Irinotecan is strong
 - V1 limited to 5 drugs
 
 ---
@@ -110,10 +124,19 @@ GitHub: [@anshikatyagi2904-biocode](https://github.com/anshikatyagi2904-biocode)
 
 ---
 
-## What's Next (V2 Roadmap)
+## Roadmap
 
+- [x] Tumour → Drug → Cell line prediction flow
+- [x] Predicted vs actual scatter plot with percentile context
+- [x] Model confidence indicator (Good / Moderate / Weak)
+- [x] Biological role annotations for top genes
 - [ ] Expand to 20+ drugs
-- [ ] Add predicted vs actual scatter plot
-- [ ] Include mutation features
-- [ ] Add model confidence intervals
+- [ ] Include mutation & CNV features
+- [ ] Add prediction confidence intervals
+
+
+
+
+
+
 
