@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import xgboost as xgb
+import matplotlib.pyplot as plt
 from huggingface_hub import hf_hub_download
 
 st.set_page_config(page_title="Cancer Drug Response Predictor", layout="wide")
@@ -31,8 +32,6 @@ SUPPORTED_DRUGS = {
     },
 }
 
-# Gene → biological pathway mapping
-# Covers common genes that appear in GDSC expression-based models
 GENE_PATHWAYS = {
     "EGFR": "EGFR signalling — cell growth & proliferation",
     "ERBB2": "HER2/ErbB signalling — cell growth",
@@ -87,6 +86,7 @@ GENE_PATHWAYS = {
     "TOP2A": "DNA topoisomerase II — replication",
 }
 
+
 def get_confidence_label(r2):
     if r2 is None:
         return None, None
@@ -140,6 +140,65 @@ def load_features(features_file):
     return np.load(features_path, allow_pickle=True).tolist()
 
 
+@st.cache_data
+def get_all_predictions(drug_name, model_file, model_features, _df):
+    """Predict LN_IC50 for all cell lines for the selected drug."""
+    model = xgb.XGBRegressor()
+    model_path = hf_hub_download(
+        repo_id=DATA_REPO,
+        repo_type="dataset",
+        filename=model_file,
+    )
+    model.load_model(model_path)
+    drug_df = _df[_df["DRUG_NAME"] == drug_name].copy()
+    X_all = drug_df.reindex(columns=model_features, fill_value=0).fillna(0)
+    drug_df = drug_df.copy()
+    drug_df["Predicted_LN_IC50"] = model.predict(X_all)
+    return drug_df[["CELL_LINE_NAME", "LN_IC50", "Predicted_LN_IC50", "TCGA_DESC"]].dropna()
+
+
+def make_scatter(all_preds_df, selected_cell_line, selected_pred, selected_actual, drug_name):
+    fig, ax = plt.subplots(figsize=(7, 5))
+    fig.patch.set_facecolor("#0e1117")
+    ax.set_facecolor("#0e1117")
+
+    ax.scatter(
+        all_preds_df["LN_IC50"],
+        all_preds_df["Predicted_LN_IC50"],
+        alpha=0.35, s=18, color="#4a9eff",
+        label="All cell lines", zorder=2,
+    )
+
+    all_vals = pd.concat([all_preds_df["LN_IC50"], all_preds_df["Predicted_LN_IC50"]])
+    vmin, vmax = all_vals.min(), all_vals.max()
+    ax.plot([vmin, vmax], [vmin, vmax], color="#555555", linestyle="--",
+            linewidth=1, label="Perfect prediction", zorder=1)
+
+    ax.scatter(
+        selected_actual, selected_pred,
+        color="#ff4b4b", s=90, zorder=5,
+        label=f"{selected_cell_line} (selected)",
+        edgecolors="white", linewidths=0.8,
+    )
+
+    ax.set_xlabel("Actual LN_IC50", color="white", fontsize=11)
+    ax.set_ylabel("Predicted LN_IC50", color="white", fontsize=11)
+    ax.set_title(
+        f"{drug_name} — Predicted vs Actual LN_IC50\nacross {len(all_preds_df)} cell lines",
+        color="white", fontsize=12,
+    )
+    ax.tick_params(colors="white")
+    for spine in ["bottom", "left"]:
+        ax.spines[spine].set_color("#444444")
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    ax.legend(facecolor="#1a1a2e", labelcolor="white", fontsize=9)
+    plt.tight_layout()
+    return fig
+
+
+# ── App ───────────────────────────────────────────────────────────────────────
+
 st.title("Cancer Drug Response Predictor")
 st.caption("Demo supports 5 curated drugs with lazy-loaded models")
 
@@ -157,12 +216,10 @@ try:
     selected_tumour = st.selectbox("Select tumour type", tumour_types)
 
     tumour_df = available_df[available_df["TCGA_DESC"] == selected_tumour].copy()
-
     drugs_for_tumour = sorted(tumour_df["DRUG_NAME"].dropna().unique())
     selected_drug = st.selectbox("Select drug", drugs_for_tumour)
 
     drug_df = tumour_df[tumour_df["DRUG_NAME"] == selected_drug].copy()
-
     cell_lines = sorted(drug_df["CELL_LINE_NAME"].dropna().unique())
     selected_cell_line = st.selectbox("Select cell line", cell_lines)
 
@@ -174,14 +231,13 @@ try:
 
     X = row.reindex(columns=model_features, fill_value=0).fillna(0)
     pred = float(model.predict(X)[0])
-
     actual = float(row["LN_IC50"].iloc[0]) if "LN_IC50" in row.columns else None
 
     result_row = results_df[results_df["drug"] == selected_drug]
     r2_value = float(result_row["r2"].iloc[0]) if not result_row.empty else None
     rmse_value = float(result_row["rmse"].iloc[0]) if not result_row.empty else None
 
-    # — Metrics row ————————————————————————————————
+    # ── Metrics ───────────────────────────────────────────────────────────────
     col1, col2, col3 = st.columns(3)
     with col1:
         st.metric("Predicted LN_IC50", f"{pred:.4f}")
@@ -195,10 +251,9 @@ try:
     if rmse_value is not None:
         st.caption(f"Model RMSE: {rmse_value:.3f}")
 
-    # — Model confidence indicator ————————————————————————————————
+    # ── Model confidence ──────────────────────────────────────────────────────
     st.divider()
     st.subheader("Model Confidence")
-
     confidence_label, confidence_color = get_confidence_label(r2_value)
 
     if confidence_label:
@@ -222,13 +277,42 @@ try:
 A weak fit doesn't mean the biology is wrong — it may mean gene expression alone isn't sufficient to predict this drug's response, or the drug has a complex mechanism.
 """)
 
-    # — Selection details ————————————————————————————————
+    # ── Scatter plot ──────────────────────────────────────────────────────────
+    st.divider()
+    st.subheader("Predicted vs Actual LN_IC50")
+    st.caption("Each dot is one cell line. Red dot = your selected cell line. Dashed line = perfect prediction.")
+
+    if actual is not None:
+        with st.spinner("Generating predictions for all cell lines..."):
+            all_preds = get_all_predictions(
+                selected_drug, model_info["model_file"], model_features, df
+            )
+
+        if not all_preds.empty:
+            fig = make_scatter(all_preds, selected_cell_line, pred, actual, selected_drug)
+            st.pyplot(fig)
+            plt.close(fig)
+
+            percentile = (all_preds["LN_IC50"] < actual).mean() * 100
+            sensitivity = (
+                "lower than most (more sensitive)" if percentile < 40
+                else "higher than most (more resistant)" if percentile > 60
+                else "near the median sensitivity"
+            )
+            st.caption(
+                f"**{selected_cell_line}** actual LN_IC50 is at the **{percentile:.0f}th percentile** "
+                f"among all {selected_drug} cell lines — {sensitivity}."
+            )
+    else:
+        st.info("Actual LN_IC50 not available — scatter plot requires actual values.")
+
+    # ── Selection details ─────────────────────────────────────────────────────
     st.divider()
     st.subheader("Selection Details")
     details_cols = [c for c in ["CELL_LINE_NAME", "TCGA_DESC", "PATHWAY_NAME", "DRUG_NAME"] if c in row.columns]
     st.dataframe(row[details_cols], use_container_width=True)
 
-    # — Top gene importance with pathway labels ————————————————————————————————
+    # ── Gene importance ───────────────────────────────────────────────────────
     st.divider()
     st.subheader("Top Gene Importance")
     st.caption("What the model relied on most to make this prediction, and what each gene does biologically.")
@@ -236,15 +320,13 @@ A weak fit doesn't mean the biology is wrong — it may mean gene expression alo
     importances = model.feature_importances_
     importance_df = pd.DataFrame({
         "Gene": model_features,
-        "Importance Score": importances
+        "Importance Score": importances,
     }).sort_values("Importance Score", ascending=False).head(20).reset_index(drop=True)
 
     importance_df["Biological Role"] = importance_df["Gene"].map(
-        lambda g: GENE_PATHWAYS.get(g, "—")
+        lambda g: GENE_PATHWAYS.get(g.split(" ")[0], "—")
     )
 
-    # highlight genes we have pathway info for
-    known = importance_df["Biological Role"] != "—"
     st.dataframe(
         importance_df,
         use_container_width=True,
@@ -255,12 +337,12 @@ A weak fit doesn't mean the biology is wrong — it may mean gene expression alo
                 max_value=float(importance_df["Importance Score"].max()),
                 format="%.4f",
             )
-        }
+        },
     )
 
-    known_count = known.sum()
+    known_count = (importance_df["Biological Role"] != "—").sum()
     if known_count > 0:
-        st.caption(f"{known_count} of top 20 genes have known pathway annotations. '—' means the gene is not in the current annotation dictionary.")
+        st.caption(f"{known_count} of top 20 genes have known pathway annotations.")
 
 except Exception as e:
     st.error("App failed")
